@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, Kamiel
+ * Copyright (c) 2018, Seth <https://github.com/sethtroll>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,20 +22,38 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package net.runelite.api;
+package net.runelite.client.plugins.banktags;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
+import java.awt.Point;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
+import javax.inject.Inject;
+import javax.swing.SwingUtilities;
+import net.runelite.client.input.KeyListener;
+import net.runelite.client.input.MouseListener;
+import net.runelite.client.plugins.grounditems.GroundItemsPlugin;
 
-/**
- * An enumeration of string local variables.
- */
-@AllArgsConstructor
-@Getter
-public enum VarClientStr
+public class BankInputListener extends MouseListener
 {
-	CHATBOX_TYPED_TEXT(1),
-	SEARCH_TEXT(22);
+	@Inject
+	private BankTagsPlugin plugin;
 
-	private final int index;
+	@Override
+	public MouseEvent mousePressed(MouseEvent e)
+	{
+		final Point mousePos = e.getPoint();
+
+		if (SwingUtilities.isLeftMouseButton(e))
+		{
+			// Process both click boxes for hidden and highlighted items
+			if (plugin.isBankOpen())
+			{
+				plugin.click = true;
+				return e;
+			}
+		}
+
+		return e;
+	}
 }
+
