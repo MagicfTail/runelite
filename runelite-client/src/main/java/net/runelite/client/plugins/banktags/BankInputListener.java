@@ -32,6 +32,7 @@ import javax.swing.SwingUtilities;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.MouseListener;
 import net.runelite.client.plugins.grounditems.GroundItemsPlugin;
+import net.runelite.client.ui.overlay.components.PanelComponent;
 
 public class BankInputListener extends MouseListener
 {
@@ -45,12 +46,20 @@ public class BankInputListener extends MouseListener
 
 		if (SwingUtilities.isLeftMouseButton(e))
 		{
-			// Process both click boxes for hidden and highlighted items
-			if (plugin.isBankOpen() && plugin.tabsBounds.contains(mousePos))
+
+			if (plugin.isBankOpen())
 			{
-				plugin.click = true;
-				return e;
+				if (plugin.getTagBounds() != null && plugin.getTagBounds().getKey().contains(mousePos))
+				{
+					plugin.click = true;
+					return e;
+				} else if (plugin.downArrowBounds.contains(mousePos) || plugin.upArrowBounds.contains(mousePos))
+				{
+					plugin.click = true;
+					return e;
+				}
 			}
+
 		}
 
 		return e;

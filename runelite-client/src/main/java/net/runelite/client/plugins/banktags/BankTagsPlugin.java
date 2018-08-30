@@ -24,18 +24,19 @@
  */
 package net.runelite.client.plugins.banktags;
 
-import com.google.common.collect.ObjectArrays;
 import com.google.common.eventbus.Subscribe;
-import java.awt.Color;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import javax.inject.Inject;
+import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -46,12 +47,11 @@ import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.ItemID;
 import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
 import net.runelite.api.SpriteID;
 import net.runelite.api.VarClientStr;
+import net.runelite.api.events.DraggingWidgetChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
-import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.events.WidgetLoaded;
@@ -68,9 +68,9 @@ import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.util.ColorUtil;
+import net.runelite.client.ui.overlay.tooltip.Tooltip;
+import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 import net.runelite.client.util.ImageUtil;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 
 @PluginDescriptor(
@@ -109,6 +109,14 @@ public class BankTagsPlugin extends Plugin
 	private BufferedImage tabIcon;
 
 	public Rectangle tabsBounds = new Rectangle();
+	public Rectangle upArrowBounds = new Rectangle();
+	public Rectangle downArrowBounds = new Rectangle();
+
+	@Getter(AccessLevel.PACKAGE)
+	private boolean dragging = false;
+
+	@Setter
+	private TagTab focusedTab = null;
 
 	@Inject
 	private SpriteManager spriteManager;
@@ -148,6 +156,13 @@ public class BankTagsPlugin extends Plugin
 
 	@Inject
 	private ClientThread clientThread;
+
+	@Inject
+	private TooltipManager tooltipManager;
+
+	@Getter(AccessLevel.PACKAGE)
+	@Setter(AccessLevel.PACKAGE)
+	private Map.Entry<Rectangle, TagTab> tagBounds;
 
 	public boolean click;
 
@@ -199,7 +214,7 @@ public class BankTagsPlugin extends Plugin
 	{
 		if (stateChanged.getGameState() == GameState.LOGGED_IN)
 		{
-			tabIcon = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB, 0), Math.PI / 180 * 270);
+			tabIcon = spriteManager.getSprite(SpriteID.BANK_TAB, 0);
 			tabActive = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB_SELECTED, 0), Math.PI / 180 * 270);
 			tabFocused = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB_HOVERED, 0), Math.PI / 180 * 270);
 
@@ -372,6 +387,41 @@ public class BankTagsPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void draggedWidget(DraggingWidgetChanged event)
+	{
+		// is dragging widget and mouse button released
+		if (isBankOpen && event.isDraggingWidget() && client.getMouseCurrentButton() == 0)
+		{
+			Widget draggedWidget = client.getDraggedWidget();
+			if (draggedWidget.getItemId() > 0)
+			{
+				if (tagBounds != null)
+				{
+					updateTagIcon(draggedWidget.getItemId(), tagBounds.getValue());
+				}
+			}
+			dragging = false;
+		}
+		else if (isBankOpen && event.isDraggingWidget())
+		{
+			Widget draggedWidget = client.getDraggedWidget();
+			if (draggedWidget.getItemId() > 0)
+			{
+				if (tagBounds != null)
+				{
+					dragging = true;
+					tooltipManager.add(new Tooltip("Set tag:" + tagBounds.getValue().getName() + " icon to " + draggedWidget.getName()));
+				}
+			}
+		}
+	}
+
+	private void updateTagIcon(int itemId, TagTab tagTab)
+	{
+		tagTab.setImage(itemManager.getImage(itemId));
+	}
+
+	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
 		if (event.getWidgetId() == WidgetInfo.BANK_ITEM_CONTAINER.getId()
@@ -443,45 +493,6 @@ public class BankTagsPlugin extends Plugin
 					actions[EDIT_TAGS_MENU_INDEX - 1] += " (" + tagCount + ")";
 				}
 			});
-		}
-	}
-
-	@Subscribe
-	public void onMenuOpened(final MenuOpened event)
-	{
-		final MenuEntry firstEntry = event.getFirstEntry();
-
-		if (firstEntry == null)
-		{
-			return;
-		}
-
-		final int widgetId = firstEntry.getParam1();
-
-		// Inventory button menu
-		if (isBankOpen && widgetId == WidgetInfo.BANK_ITEM_CONTAINER.getId())
-		{
-			final int itemId = firstEntry.getIdentifier();
-
-			if (itemId == -1)
-			{
-				return;
-			}
-
-			MenuEntry[] entries = event.getMenuEntries();
-			entries = Arrays.copyOf(entries, entries.length + 1);
-
-			final MenuEntry configureOption = entries[entries.length - 1] = new MenuEntry();
-			configureOption.setOption("Set Tab Icon");
-			configureOption.setTarget(ColorUtil.prependColorTag(entries[1].getTarget(), new Color(255, 144, 64)));
-			configureOption.setIdentifier(0);
-			configureOption.setParam1(widgetId);
-			configureOption.setType(MenuAction.RUNELITE.getId());
-
-
-			log.debug("{}, {}", itemId, configureOption);
-
-			client.setMenuEntries(entries);
 		}
 	}
 }

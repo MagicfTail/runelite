@@ -20,6 +20,8 @@ import net.runelite.client.ui.overlay.components.PanelComponent;
 import net.runelite.client.ui.overlay.tooltip.Tooltip;
 import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
+import java.util.AbstractMap.SimpleEntry;
+
 @Slf4j
 public class BankTagsOverlay extends Overlay
 {
@@ -28,64 +30,22 @@ public class BankTagsOverlay extends Overlay
 	private final TooltipManager tooltipManager;
 
 	private PanelComponent panel = new PanelComponent();
-
 	private long last_time = System.nanoTime();
-
 	private Rectangle bounds = new Rectangle();
-	private int y = 0;
-	private int x = 0;
 	private BufferedImage tab;
 
-
+	private int y = 0;
+	private int x = 0;
 	private int idx = 0;
-
-	private int width = 40;
-	private int height = 40;
-
-	private final int notch = 6;
-
-	private final Color borderColor = new Color(113, 100, 81);
-	private final Color shadowColor = new Color(46, 43, 45);
-//	private final GradientPaint fadeColor = new GradientPaint(0, 0,  1);
+	private int width = 0;
+	private int height = 0;
 
 	private final int xpad = 2;
-
 	private int activeTab = -1;
 
-	private void drawTab(Graphics2D graphics, boolean active, boolean focused)
-	{
-		graphics.setColor(borderColor);
-
-		graphics.drawLine(x + xpad, y + notch, x + xpad, y + height);
-		graphics.drawLine(x + xpad, y + height, x + width, y + height);
-		graphics.drawLine(x + xpad, y + notch, x + notch + xpad, y);
-		graphics.drawLine(x + notch + 2, y, x + width, y);
-
-		if (!active)
-		{
-			graphics.drawLine(x + width, y, x + width, y + height);
-		}
-	}
-
-	private void drawBorder(Graphics2D graphics, boolean active)
-	{
-		graphics.setColor(shadowColor);
-
-		graphics.drawLine(x + xpad - 1, y + notch - 1, x + xpad - 1, y + height + 1);
-		graphics.drawLine(x + xpad - 1, y + height + 1, x + width + 1, y + height + 1);
-		graphics.drawLine(x + xpad - 1, y + notch - 1, x + notch + xpad - 1, y - 1);
-		graphics.drawLine(x + notch + 2 - 1, y - 1, x + width + 1, y - 1);
-
-		if (!active)
-		{
-			graphics.drawLine(x + width + 1, y - 1, x + width + 1, y + height + 1);
-		}
-	}
-
-	private void drawBackground(Graphics2D graphics, boolean focused)
-	{
-
-	}
+	private BufferedImage tabIcon;
+	private BufferedImage focusedTabIcon;
+	private BufferedImage activeTabIcon;
 
 	@Inject
 	BankTagsOverlay(Client client, BankTagsPlugin plugin, TooltipManager tooltipManager)
@@ -108,6 +68,7 @@ public class BankTagsOverlay extends Overlay
 			}
 
 			boolean processClick = click();
+			boolean processFocus = false;
 
 			long time = System.nanoTime();
 			int delta_time = (int) ((time - last_time) / 1000000);
@@ -162,45 +123,70 @@ public class BankTagsOverlay extends Overlay
 
 			graphics.clipRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
-			y -= (idx * (height + 2));
+			y -= (idx * (height + 3));
+
+			plugin.setTagBounds(null);
 
 			for (TagTab tagTab : plugin.getTabs())
 			{
-
 				final Rectangle itemHighlightBox = new Rectangle(x + 2, y, width, height);
 
 				final boolean mouseInHighlightBox = itemHighlightBox.contains(mousePos.getX(), mousePos.getY());
-				final boolean activeTab = plugin.getSearchStr().equalsIgnoreCase(tagTab.getName());
+				final boolean activeTab = plugin.getSearchStr().equalsIgnoreCase("tag:" + tagTab.getName());
 
-				if (mouseInHighlightBox)
+				if (mouseInHighlightBox && bounds.contains(mousePos.getX(), mousePos.getY()))
 				{
 					if (processClick)
 					{
 						processClick = false;
-						openTag(tagTab.getName());
+						openTag("tag:" + tagTab.getName());
+					}
+
+					plugin.setTagBounds(new SimpleEntry<>(itemHighlightBox, tagTab));
+					if (!plugin.isDragging())
+					{
+						tooltipManager.add(new Tooltip("Tag: " + tagTab.getName()));
 					}
 				}
 
-				graphics.drawImage(plugin.getTabIcon(), x, y, null);
-
-//				drawTab(graphics, activeTab, mouseInHighlightBox);
-//				drawBorder(graphics, activeTab);
-
+				drawTab(graphics, x, y, activeTab, mouseInHighlightBox);
 				final BufferedImage image = tagTab.getImage();
 
 				graphics.drawImage(tab, x, y, null);
 				graphics.drawImage(image, x + 4, y + (height - image.getHeight()) / 2, null);
 
-				if (mouseInHighlightBox && bounds.contains(mousePos.getX(), mousePos.getY()))
-				{
-					tooltipManager.add(new Tooltip(tagTab.getName()));
-				}
-
-				y += height - 1;
+				y += height;
 			}
+			return null;
 		}
 
+
 		return null;
+	}
+
+	private void drawTab(Graphics2D graphics, int x, int y, boolean active, boolean focused)
+	{
+		if (tabIcon == null)
+		{
+			tabIcon = plugin.getTabIcon();
+			focusedTabIcon = plugin.getTabFocused();
+			activeTabIcon = plugin.getTabActive();
+		}
+
+		if (active)
+		{
+			graphics.drawImage(activeTabIcon, x, y, null);
+			log.debug("{}", activeTabIcon.toString());
+		}
+		else if (focused)
+		{
+			graphics.drawImage(focusedTabIcon, x, y, null);
+		}
+		else
+		{
+			graphics.drawImage(tabIcon, x, y, null);
+			log.debug("{}", tabIcon.toString());
+		}
 	}
 
 	private void updateIndex(int i)
@@ -245,7 +231,7 @@ public class BankTagsOverlay extends Overlay
 	private void openTag(String tag)
 	{
 
-		Widget widget = client.getWidget(162, 37);
+		Widget widget = client.getWidget(162, 38);
 
 		if (widget != null && widget.isHidden())
 		{
@@ -264,7 +250,7 @@ public class BankTagsOverlay extends Overlay
 				786478,
 				786487);
 
-			widget = client.getWidget(162, 37);
+			widget = client.getWidget(162, 38);
 		}
 
 		client.setVar(VarClientStr.SEARCH_TEXT, tag);
@@ -279,19 +265,21 @@ public class BankTagsOverlay extends Overlay
 		{
 			bounds.setBounds(itemContainer.getBounds());
 
-			bounds.setSize(52, bounds.height);
+			bounds.setSize(width, bounds.height);
 			bounds.setLocation(bounds.x - 52, bounds.y + 20);
 
 			Widget incinerator = client.getWidget(WidgetInfo.BANK_INCINERATOR);
 
 			if (incinerator != null && !incinerator.isHidden())
 			{
-				bounds.setSize(52, bounds.height - 70);
+				bounds.setSize(width, bounds.height - 70);
 			}
 
-			bounds.setSize(52, bounds.height - 40);
+			bounds.setSize(width, bounds.height - 40);
 
-			plugin.tabsBounds.setBounds(bounds.x, bounds.y - 20, bounds.width, bounds.height + 40);
+			plugin.tabsBounds.setBounds(bounds);
+			plugin.upArrowBounds.setBounds(bounds.x, bounds.y - 20, bounds.width, 20);
+			plugin.downArrowBounds.setBounds(bounds.x, bounds.y + bounds.height, bounds.width, bounds.height + 20);
 
 			return true;
 		}

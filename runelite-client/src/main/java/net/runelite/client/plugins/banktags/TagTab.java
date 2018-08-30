@@ -10,4 +10,10 @@ public class TagTab
 {
 	private String name;
 	private AsyncBufferedImage image;
+
+
+	public String toString()
+	{
+		return "TagTab{name=" + name + ", image=" + image + "}";
+	}
 }
