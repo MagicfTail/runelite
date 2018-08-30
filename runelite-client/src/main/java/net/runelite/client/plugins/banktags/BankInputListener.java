@@ -46,7 +46,7 @@ public class BankInputListener extends MouseListener
 		if (SwingUtilities.isLeftMouseButton(e))
 		{
 			// Process both click boxes for hidden and highlighted items
-			if (plugin.isBankOpen())
+			if (plugin.isBankOpen() && plugin.tabsBounds.contains(mousePos))
 			{
 				plugin.click = true;
 				return e;

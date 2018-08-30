@@ -24,12 +24,16 @@
  */
 package net.runelite.client.plugins.banktags;
 
+import com.google.common.collect.ObjectArrays;
 import com.google.common.eventbus.Subscribe;
+import java.awt.Color;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import javafx.scene.input.KeyCode;
+import java.util.Set;
+import java.util.TreeSet;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -42,10 +46,12 @@ import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.ItemID;
 import net.runelite.api.MenuAction;
-import net.runelite.api.ScriptID;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.SpriteID;
 import net.runelite.api.VarClientStr;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.events.WidgetLoaded;
@@ -62,7 +68,10 @@ import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.ImageUtil;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 
 @PluginDescriptor(
 	name = "Bank Tags",
@@ -90,6 +99,17 @@ public class BankTagsPlugin extends Plugin
 
 	private static final int EDIT_TAGS_MENU_INDEX = 8;
 
+	@Getter
+	private BufferedImage tabFocused;
+
+	@Getter
+	private BufferedImage tabActive;
+
+	@Getter
+	private BufferedImage tabIcon;
+
+	public Rectangle tabsBounds = new Rectangle();
+
 	@Inject
 	private SpriteManager spriteManager;
 
@@ -100,13 +120,10 @@ public class BankTagsPlugin extends Plugin
 	private boolean isBankOpen = false;
 
 	@Getter
-	private List<Tag> tabs = new ArrayList<>();
+	private List<TagTab> tabs = new ArrayList<>();
 
 	@Getter
-	private BufferedImage tabIcon;
-
-	@Getter
-	private BufferedImage focusedTabIcon;
+	private String searchStr = "";
 
 	@Inject
 	private Client client;
@@ -157,7 +174,6 @@ public class BankTagsPlugin extends Plugin
 		{
 			log.debug("bank opened");
 			isBankOpen = true;
-
 		}
 	}
 
@@ -168,6 +184,8 @@ public class BankTagsPlugin extends Plugin
 		{
 			Widget widget = client.getWidget(WidgetID.BANK_GROUP_ID, 11);
 
+			searchStr = client.getVar(VarClientStr.SEARCH_TEXT).trim();
+
 			if (widget == null)
 			{
 				isBankOpen = false;
@@ -176,37 +194,38 @@ public class BankTagsPlugin extends Plugin
 		}
 	}
 
-
 	@Subscribe
 	public void stateChange(GameStateChanged stateChanged)
 	{
-		if (stateChanged.getGameState() == GameState.LOGGED_IN && tabs.isEmpty())
+		if (stateChanged.getGameState() == GameState.LOGGED_IN)
 		{
-			tabIcon = ImageUtil.rotateImage(spriteManager.getSprite(1077, 0), -1.5708);
+			tabIcon = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB, 0), Math.PI / 180 * 270);
+			tabActive = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB_SELECTED, 0), Math.PI / 180 * 270);
+			tabFocused = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB_HOVERED, 0), Math.PI / 180 * 270);
 
-			focusedTabIcon = ImageUtil.rotateImage(spriteManager.getSprite(1079, 0), -1.5708);
-
-			tabs.add(i(ItemID.SPADE, "abc"));
-
-			tabs.add(i(ItemID.COINS_8890, "money"));
-			tabs.add(i(ItemID.ABYSSAL_WHIP, "whip"));
-			tabs.add(i(ItemID.STAFF_OF_AIR, "abc123"));
-			tabs.add(i(ItemID.STAFF_OF_THE_DEAD, "combat"));
-			tabs.add(i(ItemID.STAFF_OF_EARTH, "abc"));
-			tabs.add(i(ItemID.STAFF_OF_LIGHT, "123"));
-			tabs.add(i(ItemID.TOXIC_STAFF_OF_THE_DEAD, "abc123"));
-			tabs.add(i(ItemID.RAW_ANGLERFISH, "combat"));
-			tabs.add(i(ItemID.RAW_CAVE_EEL, "abc"));
-			tabs.add(i(ItemID.RAW_KARAMBWAN, "123"));
-			tabs.add(i(ItemID.RAW_SALMON, "whip"));
-			tabs.add(i(ItemID.RAW_LOBSTER, "combat"));
-			tabs.add(i(ItemID.RAW_SHARK, "herb"));
+			updateTabs();
 		}
 	}
 
-	private Tag i(int id, String txt)
+	private void updateTabs()
 	{
-		return new Tag("Tag: " + txt, itemManager.getImage(id));
+		tabs.clear();
+		Set<String> allTags = getAllTags();
+		allTags.forEach(t -> tabs.add(makeTab(t)));
+	}
+
+	private TagTab makeTab(String txt)
+	{
+		int id = NumberUtils.toInt(configManager.getConfiguration(CONFIG_GROUP, "tab_" + txt), 0);
+
+		if (id == 0)
+		{
+			id = ItemID.SPADE;
+		}
+
+		log.debug("tab_{}: ", txt, id);
+
+		return new TagTab(txt, itemManager.getImage(id));
 	}
 
 	private String getTags(int itemId)
@@ -229,6 +248,23 @@ public class BankTagsPlugin extends Plugin
 		{
 			configManager.setConfiguration(CONFIG_GROUP, ITEM_KEY_PREFIX + itemId, tags);
 		}
+
+		updateTabs();
+	}
+
+	private Set<String> getAllTags()
+	{
+		Set<String> set = new TreeSet<>();
+
+
+		List<String> values = configManager.getConfigurationKeys(CONFIG_GROUP + "." + ITEM_KEY_PREFIX);
+		values.forEach(s ->
+		{
+			String[] split = configManager.getConfiguration(s).split(",");
+			set.addAll(Arrays.asList(split));
+		});
+
+		return set;
 	}
 
 	private int getTagCount(int itemId)
@@ -407,6 +443,45 @@ public class BankTagsPlugin extends Plugin
 					actions[EDIT_TAGS_MENU_INDEX - 1] += " (" + tagCount + ")";
 				}
 			});
+		}
+	}
+
+	@Subscribe
+	public void onMenuOpened(final MenuOpened event)
+	{
+		final MenuEntry firstEntry = event.getFirstEntry();
+
+		if (firstEntry == null)
+		{
+			return;
+		}
+
+		final int widgetId = firstEntry.getParam1();
+
+		// Inventory button menu
+		if (isBankOpen && widgetId == WidgetInfo.BANK_ITEM_CONTAINER.getId())
+		{
+			final int itemId = firstEntry.getIdentifier();
+
+			if (itemId == -1)
+			{
+				return;
+			}
+
+			MenuEntry[] entries = event.getMenuEntries();
+			entries = Arrays.copyOf(entries, entries.length + 1);
+
+			final MenuEntry configureOption = entries[entries.length - 1] = new MenuEntry();
+			configureOption.setOption("Set Tab Icon");
+			configureOption.setTarget(ColorUtil.prependColorTag(entries[1].getTarget(), new Color(255, 144, 64)));
+			configureOption.setIdentifier(0);
+			configureOption.setParam1(widgetId);
+			configureOption.setType(MenuAction.RUNELITE.getId());
+
+
+			log.debug("{}, {}", itemId, configureOption);
+
+			client.setMenuEntries(entries);
 		}
 	}
 }

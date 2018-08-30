@@ -6,7 +6,7 @@ import net.runelite.client.game.AsyncBufferedImage;
 
 @AllArgsConstructor
 @Data
-public class Tag
+public class TagTab
 {
 	private String name;
 	private AsyncBufferedImage image;
