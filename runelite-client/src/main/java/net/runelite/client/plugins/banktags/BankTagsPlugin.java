@@ -27,19 +27,20 @@ package net.runelite.client.plugins.banktags;
 import com.google.common.eventbus.Subscribe;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.awt.image.PixelGrabber;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import javax.inject.Inject;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.GameState;
 import net.runelite.api.IntegerNode;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
@@ -47,13 +48,20 @@ import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.ItemID;
 import net.runelite.api.MenuAction;
-import net.runelite.api.SpriteID;
+import static net.runelite.api.MenuAction.MENU_ACTION_DEPRIORITIZE_OFFSET;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.Point;
+import net.runelite.api.ScriptID;
+import net.runelite.api.SoundEffectID;
+import net.runelite.api.SpritePixels;
 import net.runelite.api.VarClientStr;
+import net.runelite.api.WidgetType;
 import net.runelite.api.events.DraggingWidgetChanged;
-import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptCallbackEvent;
+import net.runelite.api.events.VarClientStrChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetConfig;
@@ -70,8 +78,6 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.tooltip.Tooltip;
 import net.runelite.client.ui.overlay.tooltip.TooltipManager;
-import net.runelite.client.util.ImageUtil;
-import org.apache.commons.lang3.math.NumberUtils;
 
 @PluginDescriptor(
 	name = "Bank Tags",
@@ -99,21 +105,14 @@ public class BankTagsPlugin extends Plugin
 
 	private static final int EDIT_TAGS_MENU_INDEX = 8;
 
-	@Getter
-	private BufferedImage tabFocused;
+	private static final String SCROLL_UP = "Scroll Up";
+	private static final String SCROLL_DOWN = "Scroll Down";
+	private static final String CHANGE_ICON = "Set Icon";
 
-	@Getter
-	private BufferedImage tabActive;
-
-	@Getter
-	private BufferedImage tabIcon;
+	private boolean processIcon = false;
+	private TagTab iconToSet;
 
 	public Rectangle tabsBounds = new Rectangle();
-	public Rectangle upArrowBounds = new Rectangle();
-	public Rectangle downArrowBounds = new Rectangle();
-
-	@Getter(AccessLevel.PACKAGE)
-	private boolean dragging = false;
 
 	@Setter
 	private TagTab focusedTab = null;
@@ -143,16 +142,11 @@ public class BankTagsPlugin extends Plugin
 	private ChatboxInputManager chatboxInputManager;
 
 	@Inject
-	private BankTagsOverlay overlay;
-
-	@Inject
 	private OverlayManager overlayManager;
 
 	@Inject
 	private MouseManager mouseManager;
 
-	@Inject
-	private BankInputListener inputListener;
 
 	@Inject
 	private ClientThread clientThread;
@@ -160,26 +154,98 @@ public class BankTagsPlugin extends Plugin
 	@Inject
 	private TooltipManager tooltipManager;
 
-	@Getter(AccessLevel.PACKAGE)
-	@Setter(AccessLevel.PACKAGE)
-	private Map.Entry<Rectangle, TagTab> tagBounds;
+	private Rectangle bounds = new Rectangle();
 
-	public boolean click;
+	private int idx = 0;
+
+	private List<TagTab> tagTabs = new ArrayList<>();
+
+	private Widget tArrowBg;
+	private Widget tArrowIcon;
+	private Widget bArrowBg;
+	private Widget bArrowIcon;
+	private boolean dragging = false;
+	int maxTabs = 0;
+
+	private Widget activeTab = null;
+
+	private Map<Integer, SpritePixels> spriteOverrides = new HashMap<>();
+
 
 	@Override
 	public void startUp()
 	{
-		overlayManager.add(overlay);
-
-		mouseManager.registerMouseListener(inputListener);
 	}
 
 	@Override
 	public void shutDown()
 	{
-		overlayManager.remove(overlay);
 
-		mouseManager.unregisterMouseListener(inputListener);
+	}
+
+	private boolean updateBounds()
+	{
+		Widget itemContainer = client.getWidget(WidgetInfo.BANK_ITEM_CONTAINER);
+		if (itemContainer != null)
+		{
+			bounds.setSize(41, itemContainer.getHeight());
+			bounds.setLocation(0, itemContainer.getRelativeY());
+
+			Widget incinerator = client.getWidget(WidgetInfo.BANK_INCINERATOR);
+
+			if (incinerator != null && !incinerator.isHidden())
+			{
+				bounds.setSize(41, itemContainer.getHeight() - incinerator.getHeight());
+			}
+
+			return true;
+		}
+
+		return false;
+	}
+
+	private void makeUpButton()
+	{
+		Widget parent = client.getWidget(WidgetID.BANK_GROUP_ID, 20);
+
+		tArrowBg = parent.createChild(-1, WidgetType.GRAPHIC);
+		tArrowBg.setSpriteId(1110);
+		tArrowBg.setOriginalWidth(40);
+		tArrowBg.setOriginalHeight(20);
+		tArrowBg.setOriginalX(0);
+		tArrowBg.setOnOpListener(ScriptID.NULL);
+		tArrowBg.setHasListener(true);
+		tArrowBg.setAction(1, SCROLL_UP);
+		tArrowBg.revalidate();
+
+		tArrowIcon = parent.createChild(-1, WidgetType.GRAPHIC);
+		tArrowIcon.setSpriteId(1115);
+		tArrowIcon.setOriginalWidth(14);
+		tArrowIcon.setOriginalHeight(18);
+		tArrowIcon.setOriginalX(14);
+		tArrowIcon.revalidate();
+	}
+
+	private void makeDownButton()
+	{
+		Widget parent = client.getWidget(WidgetID.BANK_GROUP_ID, 20);
+
+		bArrowBg = parent.createChild(-1, WidgetType.GRAPHIC);
+		bArrowBg.setSpriteId(1110);
+		bArrowBg.setOriginalWidth(40);
+		bArrowBg.setOriginalHeight(20);
+		bArrowBg.setOriginalX(bounds.x);
+		bArrowBg.setOnOpListener(ScriptID.NULL);
+		bArrowBg.setHasListener(true);
+		bArrowBg.setAction(1, SCROLL_DOWN);
+		bArrowBg.revalidate();
+
+		bArrowIcon = parent.createChild(-1, WidgetType.GRAPHIC);
+		bArrowIcon.setSpriteId(1114);
+		bArrowIcon.setOriginalWidth(14);
+		bArrowIcon.setOriginalHeight(18);
+		bArrowIcon.setOriginalX(bounds.x + 14);
+		bArrowIcon.revalidate();
 	}
 
 	@Subscribe
@@ -187,8 +253,124 @@ public class BankTagsPlugin extends Plugin
 	{
 		if (widgetLoaded.getGroupId() == WidgetID.BANK_GROUP_ID)
 		{
+			idx = 0;
 			log.debug("bank opened");
 			isBankOpen = true;
+			processIcon = false;
+			iconToSet = null;
+			dragging = false;
+			setActiveTab(null);
+
+			tagTabs.clear();
+
+			updateBounds();
+
+			makeUpButton();
+
+			addTabs();
+
+			makeDownButton();
+		}
+	}
+
+	private SpritePixels getImageSpritePixels(BufferedImage image)
+	{
+		int[] pixels = new int[image.getWidth() * image.getHeight()];
+
+		try
+		{
+			new PixelGrabber(image, 0, 0, image.getWidth(), image.getHeight(), pixels, 0, image.getWidth())
+				.grabPixels();
+		}
+		catch (InterruptedException ex)
+		{
+			log.debug("PixelGrabber was interrupted: ", ex);
+		}
+
+		return client.createSpritePixels(pixels, image.getWidth(), image.getHeight());
+	}
+
+	private void addTabs()
+	{
+		Widget parent = client.getWidget(WidgetID.BANK_GROUP_ID, 20);
+
+		Set<String> tags = getAllTags();
+		int i = 0;
+		for (String t : tags)
+		{
+//			String itemid = configManager.getConfiguration(CONFIG_GROUP, TAG_SEARCH + t + "_" + "")
+			TagTab tagTab = new TagTab(ItemID.SPADE, "tag:" + t);
+
+			Widget btn = parent.createChild(-1, WidgetType.GRAPHIC);
+			btn.setSpriteId(170);
+			btn.setOriginalWidth(40);
+			btn.setOriginalHeight(40);
+			btn.setOriginalX(0);
+			btn.setOriginalY(62 + i * 40);
+			btn.setOnOpListener(ScriptID.NULL);
+			btn.setHasListener(true);
+			btn.setAction(1, "Open");
+			btn.setName(tagTab.getTag());
+			btn.setAction(2, CHANGE_ICON);
+			btn.revalidate();
+
+			Widget icon = parent.createChild(-1, WidgetType.GRAPHIC);
+			icon.setSpriteId(tagTab.getItemId() * -1);
+			icon.setOriginalWidth(36);
+			icon.setOriginalHeight(32);
+			icon.setOriginalX(2);
+			icon.setOriginalY(62 + i * 40 + 4);
+			icon.revalidate();
+
+			spriteOverrides.put(tagTab.getItemId() * -1, getImageSpritePixels(itemManager.getImage(tagTab.getItemId())));
+
+			tagTab.setBackground(btn);
+			tagTab.setIcon(icon);
+
+			tagTabs.add(tagTab);
+		}
+
+		client.setSpriteOverrides(spriteOverrides);
+		updateTabs(0);
+	}
+
+	public void setActiveTab(TagTab tagTab)
+	{
+		if (activeTab != null)
+		{
+			activeTab.setSpriteId(170);
+			activeTab.revalidate();
+
+			activeTab = null;
+		}
+
+		if (tagTab != null)
+		{
+			Widget tab = tagTab.getBackground();
+			tab.setSpriteId(179);
+			tab.revalidate();
+
+			activeTab = tab;
+		}
+	}
+
+	@Subscribe
+	public void onVarClientStrChanged(VarClientStrChanged clientStrChanged)
+	{
+		if (clientStrChanged.getIndex() == VarClientStr.SEARCH_TEXT.getIndex())
+		{
+			String str = client.getVar(VarClientStr.SEARCH_TEXT).trim();
+
+			if (str.startsWith(TAG_SEARCH))
+			{
+				TagTab tagTab = getTabByTag(str);
+
+				setActiveTab(tagTab);
+			}
+			else
+			{
+				setActiveTab(null);
+			}
 		}
 	}
 
@@ -205,42 +387,81 @@ public class BankTagsPlugin extends Plugin
 			{
 				isBankOpen = false;
 				log.debug("bank closed");
+				idx = 0;
+			}
+
+			updateTabs(0);
+		}
+	}
+
+	private void updateArrows()
+	{
+		if (tArrowBg != null && tArrowIcon != null && bArrowBg != null && bArrowIcon != null)
+		{
+			tArrowBg.setOriginalY(bounds.y);
+			tArrowBg.revalidate();
+
+			tArrowIcon.setOriginalY(bounds.y + 2);
+			tArrowIcon.revalidate();
+
+			bArrowBg.setOriginalY(bounds.y + maxTabs * 40 + 20);
+			bArrowBg.revalidate();
+
+			bArrowIcon.setOriginalY(bounds.y + maxTabs * 40 + 22);
+			bArrowIcon.revalidate();
+		}
+	}
+
+	private void updateTabs(int num)
+	{
+		updateBounds();
+
+		maxTabs = (bounds.height - 40) / 40;
+
+		if (maxTabs >= tagTabs.size())
+		{
+			idx = 0;
+			int y = bounds.y + 20;
+			int height = 40;
+			for (TagTab tg : tagTabs)
+			{
+				updateWidget(tg.getBackground(), y);
+				updateWidget(tg.getIcon(), y + 4);
+
+				y += height;
 			}
 		}
-	}
-
-	@Subscribe
-	public void stateChange(GameStateChanged stateChanged)
-	{
-		if (stateChanged.getGameState() == GameState.LOGGED_IN)
+		else if ((tagTabs.size() - (idx + num) > maxTabs) && (idx + num > -1))
 		{
-			tabIcon = spriteManager.getSprite(SpriteID.BANK_TAB, 0);
-			tabActive = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB_SELECTED, 0), Math.PI / 180 * 270);
-			tabFocused = ImageUtil.rotateImage(spriteManager.getSprite(SpriteID.BANK_TAB_HOVERED, 0), Math.PI / 180 * 270);
+			idx += num;
+			int y = 62;
+			int height = 40;
+			y -= (idx * height);
+			for (TagTab tg : tagTabs)
+			{
+				updateWidget(tg.getBackground(), y);
+				updateWidget(tg.getIcon(), y + 4);
 
-			updateTabs();
-		}
-	}
-
-	private void updateTabs()
-	{
-		tabs.clear();
-		Set<String> allTags = getAllTags();
-		allTags.forEach(t -> tabs.add(makeTab(t)));
-	}
-
-	private TagTab makeTab(String txt)
-	{
-		int id = NumberUtils.toInt(configManager.getConfiguration(CONFIG_GROUP, "tab_" + txt), 0);
-
-		if (id == 0)
-		{
-			id = ItemID.SPADE;
+				y += height;
+			}
 		}
 
-		log.debug("tab_{}: ", txt, id);
+		updateArrows();
+	}
 
-		return new TagTab(txt, itemManager.getImage(id));
+	private void updateWidget(Widget t, int y)
+	{
+		t.setOriginalY(y);
+		t.setRelativeY(y);
+		if (y < 62 || y > bounds.y + bounds.height - 62)
+		{
+			t.setHidden(true);
+		}
+		else
+		{
+			t.setHidden(false);
+		}
+		t.revalidate();
 	}
 
 	private String getTags(int itemId)
@@ -264,7 +485,7 @@ public class BankTagsPlugin extends Plugin
 			configManager.setConfiguration(CONFIG_GROUP, ITEM_KEY_PREFIX + itemId, tags);
 		}
 
-		updateTabs();
+//		updateTabs();
 	}
 
 	private Set<String> getAllTags()
@@ -395,31 +616,63 @@ public class BankTagsPlugin extends Plugin
 			Widget draggedWidget = client.getDraggedWidget();
 			if (draggedWidget.getItemId() > 0)
 			{
-				if (tagBounds != null)
+				MenuEntry[] entries = client.getMenuEntries();
+
+				if (entries.length == 3)
 				{
-					updateTagIcon(draggedWidget.getItemId(), tagBounds.getValue());
+					MenuEntry entry = entries[2];
+
+					if (entry.getOption().equals("Open"))
+					{
+						String tag = entry.getTarget();
+						int itemId = draggedWidget.getItemId();
+						setTags(itemId, getTags(itemId) + "," + tag);
+					}
 				}
 			}
-			dragging = false;
 		}
 		else if (isBankOpen && event.isDraggingWidget())
 		{
 			Widget draggedWidget = client.getDraggedWidget();
 			if (draggedWidget.getItemId() > 0)
 			{
-				if (tagBounds != null)
+				MenuEntry[] entries = client.getMenuEntries();
+
+				if (entries.length == 3)
 				{
-					dragging = true;
-					tooltipManager.add(new Tooltip("Set tag:" + tagBounds.getValue().getName() + " icon to " + draggedWidget.getName()));
+					MenuEntry entry = entries[2];
+
+					if (entry.getOption().equals("Open"))
+					{
+						entry.setOption(entry.getTarget());
+						entry.setTarget(draggedWidget.getName());
+						client.setMenuEntries(entries);
+					}
 				}
 			}
 		}
 	}
 
-	private void updateTagIcon(int itemId, TagTab tagTab)
+	@Subscribe
+	public void onMenuOptionAdded(MenuEntryAdded menuEntryAdded)
 	{
-		tagTab.setImage(itemManager.getImage(itemId));
+		if (isBankOpen)
+		{
+			MenuEntry[] entries = client.getMenuEntries();
+
+			if (entries.length == 10)
+			{
+				MenuEntry entry = entries[9];
+
+				if (processIcon)
+				{
+					entry.setOption("Set " + iconToSet.getTag() + " icon");
+					client.setMenuEntries(entries);
+				}
+			}
+		}
 	}
+
 
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
@@ -494,5 +747,130 @@ public class BankTagsPlugin extends Plugin
 				}
 			});
 		}
+		else if (isBankOpen)
+		{
+			if (processIcon)
+			{
+				if (event.getMenuOption().startsWith("Set tag:"))
+				{
+					event.consume();
+					processIcon = false;
+
+					int inventoryIndex = event.getActionParam();
+					ItemContainer bankContainer = client.getItemContainer(InventoryID.BANK);
+					if (bankContainer == null)
+					{
+						return;
+					}
+					Item[] items = bankContainer.getItems();
+					if (inventoryIndex < 0 || inventoryIndex >= items.length)
+					{
+						return;
+					}
+					Item item = bankContainer.getItems()[inventoryIndex];
+					if (item == null)
+					{
+						return;
+					}
+					ItemComposition itemComposition = itemManager.getItemComposition(item.getId());
+					int itemId;
+					if (itemComposition.getPlaceholderTemplateId() != -1)
+					{
+						// if the item is a placeholder then get the item id for the normal item
+						itemId = itemComposition.getPlaceholderId();
+					}
+					else
+					{
+						itemId = item.getId();
+					}
+
+					iconToSet.setItemId(itemId);
+					Widget icon = iconToSet.getIcon();
+					icon.setSpriteId(itemId * -1);
+					spriteOverrides.put(itemId * -1, getImageSpritePixels(itemManager.getImage(itemId)));
+					client.setSpriteOverrides(spriteOverrides);
+				}
+				else
+				{
+					event.consume();
+				}
+			}
+
+			switch (event.getMenuOption())
+			{
+				case SCROLL_UP:
+					event.consume();
+					updateTabs(-1);
+					client.playSoundEffect(SoundEffectID.UI_BOOP);
+					break;
+				case SCROLL_DOWN:
+					event.consume();
+					updateTabs(1);
+					client.playSoundEffect(SoundEffectID.UI_BOOP);
+					break;
+				case CHANGE_ICON:
+					event.consume();
+					processIcon = true;
+					iconToSet = getTabByTag(event.getMenuTarget());
+					break;
+				case "Open":
+					event.consume();
+					openTag(event.getMenuTarget());
+					break;
+				case "Withdraw-1":
+
+					if (processIcon)
+					{
+
+
+					}
+					break;
+			}
+		}
+	}
+
+	private TagTab getTabByTag(String name)
+	{
+		log.debug("Getting tag by name: {}", name);
+
+		Optional<TagTab> first = tagTabs.stream().filter(f -> f.getTag().equals(name)).findFirst();
+
+		if (first.isPresent())
+		{
+			return first.get();
+		}
+
+		return null;
+	}
+
+	private void openTag(String tag)
+	{
+		Widget widget = client.getWidget(162, 38);
+
+		if (widget != null && widget.isHidden())
+		{
+			client.runScript(281, 1,
+				786444,
+				786445,
+				786451,
+				786455,
+				786456,
+				786457,
+				786447,
+				786448,
+				786471,
+				786453,
+				786477,
+				786478,
+				786487);
+			widget = client.getWidget(162, 38);
+		}
+
+		client.setVar(VarClientStr.SEARCH_TEXT, tag);
+		widget.setText(tag);
+
+		TagTab tagTab = getTabByTag(tag);
+		setActiveTab(tagTab);
+
 	}
 }

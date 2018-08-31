@@ -1,19 +1,25 @@
 package net.runelite.client.plugins.banktags;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import net.runelite.client.game.AsyncBufferedImage;
+import net.runelite.api.widgets.Widget;
 
-@AllArgsConstructor
 @Data
 public class TagTab
 {
-	private String name;
-	private AsyncBufferedImage image;
+	private int itemId;
+	private String tag;
 
+	public TagTab(int itemId, String tag)
+	{
+		this.itemId = itemId;
+		this.tag = tag;
+	}
+
+	private Widget background;
+	private Widget icon;
 
 	public String toString()
 	{
-		return "TagTab{name=" + name + ", image=" + image + "}";
+		return "TagTab{tag=" + tag + ", itemId=" + itemId + "}";
 	}
 }
