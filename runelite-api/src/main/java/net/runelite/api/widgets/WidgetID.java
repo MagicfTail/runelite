@@ -187,6 +187,7 @@ public class WidgetID
 		static final int BANK_TITLE_BAR = 15;
 		static final int BANK_ITEM_COUNT = 16;
 		static final int BANK_SETTINGS = 19;
+		static final int CONTENT_CONTAINER = 20;
 		static final int TAB_BAR = 21;
 		static final int ITEM_CONTAINER = 23;
 		static final int SCROLLBAR = 24;
