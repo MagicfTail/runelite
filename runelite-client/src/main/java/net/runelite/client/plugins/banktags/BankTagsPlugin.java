@@ -322,7 +322,8 @@ public class BankTagsPlugin extends Plugin
 			btn.setOnOpListener();
 
 			Widget icon = parent.createChild(-1, WidgetType.GRAPHIC);
-			icon.setSpriteId(tagTab.getItemId() * -1);
+//			icon.setSpriteId(tagTab.getItemId() * -1);
+			icon.setItemId(tagTab.getItemId());
 			icon.setOriginalWidth(36);
 			icon.setOriginalHeight(32);
 			icon.setOriginalX(2);
@@ -334,7 +335,7 @@ public class BankTagsPlugin extends Plugin
 			clickmask |= DRAG_ON;
 			icon.setClickMask(clickmask);
 
-			spriteOverrides.put(tagTab.getItemId() * -1, getImageSpritePixels(itemManager.getImage(tagTab.getItemId())));
+//			spriteOverrides.put(tagTab.getItemId() * -1, getImageSpritePixels(itemManager.getImage(tagTab.getItemId())));
 
 			tagTab.setBackground(btn);
 			tagTab.setIcon(icon);
