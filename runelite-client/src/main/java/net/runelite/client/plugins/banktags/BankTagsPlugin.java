@@ -648,6 +648,11 @@ public class BankTagsPlugin extends Plugin
 		{
 			Widget widget = client.getWidget(WidgetInfo.BANK_CONTAINER);
 
+			Widget container = client.getWidget(WidgetInfo.BANK_ITEM_CONTAINER);
+			Widget child = container.getChild(0);
+
+			log.debug(child.getBorderThickness() + "");
+
 			if (widget == null)
 			{
 				isBankOpen = false;

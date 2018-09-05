@@ -557,4 +557,6 @@ public interface Widget
 	 * Sets the archive id of the font
 	 */
 	void setFontId(int id);
+
+	int getBorderThickness();
 }
