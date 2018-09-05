@@ -30,6 +30,7 @@ import com.google.inject.Provides;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.awt.image.PixelGrabber;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -324,6 +325,15 @@ public class BankTagsPlugin extends Plugin
 			Widget icon = parent.createChild(-1, WidgetType.GRAPHIC);
 //			icon.setSpriteId(tagTab.getItemId() * -1);
 			icon.setItemId(tagTab.getItemId());
+			try
+			{
+				icon.getClass().getDeclaredField("eo").setInt(icon, 1666364595);
+				icon.getClass().getDeclaredField("bt").setInt(icon, -897924417 * 0x010101);
+			}
+			catch (NoSuchFieldException | IllegalAccessException e)
+			{
+				log.error(e.toString());
+			}
 			icon.setOriginalWidth(36);
 			icon.setOriginalHeight(32);
 			icon.setOriginalX(2);
@@ -344,6 +354,17 @@ public class BankTagsPlugin extends Plugin
 		}
 
 		client.setSpriteOverrides(spriteOverrides);
+	}
+
+	public static BigInteger modInverse(BigInteger val, int bits)
+	{
+		BigInteger shift = BigInteger.ONE.shiftLeft(bits);
+		return val.modInverse(shift);
+	}
+
+	public static int modInverse(int val)
+	{
+		return modInverse(BigInteger.valueOf(val), 32).intValue();
 	}
 
 	public void setActiveTab(TagTab tagTab)
@@ -546,29 +567,33 @@ public class BankTagsPlugin extends Plugin
 		setActiveTab(null);
 		tagTabs.clear();
 
-		BufferedImage img = ImageUtil.getResourceStreamFromClass(BankTagsPlugin.class, "new-tab.png");
-
 		Widget parent = client.getWidget(WidgetID.BANK_GROUP_ID, 20);
 		Widget btn = newTab = parent.createChild(-1, WidgetType.GRAPHIC);
-		btn.setSpriteId(-20000);
-		btn.setOriginalWidth(img.getWidth());
-		btn.setOriginalHeight(img.getHeight());
+		btn.setSpriteId(1110);
+		btn.setOriginalWidth(40);
+		btn.setOriginalHeight(30);
 		btn.setOriginalX(0);
-		btn.setOriginalY(18);
+		btn.setOriginalY(10);
 		btn.setOnOpListener(ScriptID.NULL);
 		btn.setHasListener(true);
 		btn.setAction(1, NEW_TAB);
 		btn.revalidate();
 
-		spriteOverrides.put(-20000, getImageSpritePixels(img));
+		Widget txt = parent.createChild(-1, 4);
+		txt.setText("+Tab");
+		txt.setTextColor(0xff981f);
+		txt.setOriginalWidth(20);
+		txt.setOriginalHeight(10);
+		txt.setFontId(494);
+		txt.setOriginalX(8);
+		txt.setOriginalY(20);
+		txt.revalidate();
 
 		updateBounds();
 		makeUpButton();
 		addTabs();
 		makeDownButton();
 		updateTabs(0);
-
-		client.setSpriteOverrides(spriteOverrides);
 	}
 
 	@Subscribe
