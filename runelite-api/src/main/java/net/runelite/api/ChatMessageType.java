@@ -129,6 +129,10 @@ public enum ChatMessageType
 	 */
 	ACTION(109),
 	/**
+	 * A message created by RuneLite that disappears after ? seconds.
+	 */
+	RUNELITE_TEMPORARY_MESSAGE(73),
+	/**
 	 * An unknown message type.
 	 */
 	UNKNOWN(-1);

@@ -105,6 +105,11 @@ public class ChatMessageManager
 	@Subscribe
 	public void onSetMessage(SetMessage setMessage)
 	{
+		if (setMessage.getType().getType() == 73)
+		{
+			System.out.println("Hello");
+		}
+
 		MessageNode messageNode = setMessage.getMessageNode();
 		ChatMessageType chatMessageType = setMessage.getType();
 

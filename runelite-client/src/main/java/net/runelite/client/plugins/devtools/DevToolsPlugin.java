@@ -26,6 +26,7 @@ package net.runelite.client.plugins.devtools;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
@@ -33,20 +34,15 @@ import static java.lang.Math.min;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.Getter;
-import net.runelite.api.ChatMessageType;
-import net.runelite.api.Client;
-import net.runelite.api.Experience;
-import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
-import net.runelite.api.NPC;
-import net.runelite.api.Player;
-import net.runelite.api.Skill;
+import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.ExperienceChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.kit.KitType;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
@@ -79,6 +75,9 @@ public class DevToolsPlugin extends Plugin
 
 	@Inject
 	private OverlayManager overlayManager;
+
+	@Inject
+	private ChatMessageManager chatMessageManager;
 
 	@Inject
 	private DevToolsOverlay overlay;
@@ -256,6 +255,18 @@ public class DevToolsPlugin extends Plugin
 				client.addChatMessage(ChatMessageType.SERVER, "", "Set varbit " + varbit + " to " + value, null);
 				eventBus.post(new VarbitChanged()); // fake event
 				break;
+			}
+			case "tempmessage":
+			{
+				final QueuedMessage queuedMessage = QueuedMessage.builder()
+						.type(ChatMessageType.RUNELITE_TEMPORARY_MESSAGE)
+						.name("Also me")
+						.sender("Me")
+						.value("Tmp message")
+						.runeLiteFormattedMessage("This is a temp message")
+						.build();
+
+				chatMessageManager.queue(queuedMessage);
 			}
 			case "addxp":
 			{

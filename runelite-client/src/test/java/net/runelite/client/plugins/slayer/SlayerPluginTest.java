@@ -249,6 +249,8 @@ public class SlayerPluginTest
 		when(client.getWidget(WidgetInfo.SLAYER_REWARDS_TOPBAR)).thenReturn(rewardBar);
 		slayerPlugin.onGameTick(new GameTick());
 
+		itemManager.getItemComposition().
+
 		assertEquals(17566, slayerPlugin.getPoints());
 	}
 
