@@ -29,6 +29,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import lombok.Getter;
+import lombok.Setter;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.raids.solver.Layout;
 import net.runelite.client.plugins.raids.solver.Room;
 
@@ -39,6 +41,18 @@ public class Raid
 
 	@Getter
 	private Layout layout;
+
+	@Getter
+	private WorldPoint gridBase;
+
+	@Getter
+	@Setter
+	private int basePosition;
+
+	public Raid(WorldPoint gridBase)
+	{
+		this.gridBase = gridBase;
+	}
 
 	public void updateLayout(Layout layout)
 	{

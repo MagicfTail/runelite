@@ -28,9 +28,10 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import javax.inject.Inject;
-import lombok.Setter;
 import net.runelite.api.Client;
 import static net.runelite.api.MenuAction.RUNELITE_OVERLAY_CONFIG;
+import net.runelite.api.VarPlayer;
+import net.runelite.api.Varbits;
 import net.runelite.client.plugins.raids.solver.Room;
 import net.runelite.client.ui.overlay.Overlay;
 import static net.runelite.client.ui.overlay.OverlayManager.OPTION_CONFIGURE;
@@ -50,9 +51,6 @@ public class RaidsOverlay extends Overlay
 	private RaidsConfig config;
 	private final PanelComponent panelComponent = new PanelComponent();
 
-	@Setter
-	private boolean scoutOverlayShown = false;
-
 	@Inject
 	private RaidsOverlay(Client client, RaidsPlugin plugin, RaidsConfig config)
 	{
@@ -68,14 +66,24 @@ public class RaidsOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (!config.scoutOverlay() || !scoutOverlayShown || plugin.isInRaidChambers() && client.getPlane() == OLM_PLANE)
+		if (!scoutOverlayShown())
 		{
 			return null;
 		}
 
 		panelComponent.getChildren().clear();
 
-		if (plugin.getRaid() == null || plugin.getRaid().getLayout() == null)
+		Raid raid = null;
+		if (plugin.getRaid() != null)
+		{
+			raid = plugin.getRaid();
+		}
+		else if (plugin.getOldRaid() != null)
+		{
+			raid = plugin.getOldRaid();
+		}
+
+		if (raid == null || raid.getLayout() == null)
 		{
 			panelComponent.getChildren().add(TitleComponent.builder()
 				.text("Unable to scout this raid!")
@@ -86,7 +94,7 @@ public class RaidsOverlay extends Overlay
 		}
 
 		Color color = Color.WHITE;
-		String layout = plugin.getRaid().getLayout().toCodeString();
+		String layout = raid.getLayout().toCodeString();
 
 		if (config.enableLayoutWhitelist() && !plugin.getLayoutWhitelist().contains(layout.toLowerCase()))
 		{
@@ -103,13 +111,13 @@ public class RaidsOverlay extends Overlay
 
 		if (config.enableRotationWhitelist())
 		{
-			bossMatches = plugin.getRotationMatches();
+			bossMatches = plugin.getRotationMatches(raid);
 		}
 
-		for (Room layoutRoom : plugin.getRaid().getLayout().getRooms())
+		for (Room layoutRoom : raid.getLayout().getRooms())
 		{
 			int position = layoutRoom.getPosition();
-			RaidRoom room = plugin.getRaid().getRoom(position);
+			RaidRoom room = raid.getRoom(position);
 
 			if (room == null)
 			{
@@ -160,5 +168,48 @@ public class RaidsOverlay extends Overlay
 		}
 
 		return panelComponent.render(graphics);
+	}
+
+	private boolean scoutOverlayShown()
+	{
+		if (!config.scoutOverlay())
+		{
+			return false;
+		}
+
+		if (client.getVar(Varbits.IN_RAID) == 1)
+		{
+			if (client.getVar(Varbits.RAID_ONGOING) > 0)
+			{
+				if (client.getPlane() == OLM_PLANE)
+				{
+					return false;
+				}
+				else
+				{
+					if (config.scoutOverlayInRaid())
+					{
+						return true;
+					}
+					else
+					{
+						return false;
+					}
+				}
+			}
+			else
+			{
+				return true;
+			}
+		}
+
+		if (config.scoutOverlayAtBank()
+				&& client.getVar(VarPlayer.IN_RAID_PARTY) != -1
+				&& plugin.getOldRaid() != null)
+		{
+			return true;
+		}
+
+		return false;
 	}
 }

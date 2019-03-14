@@ -162,4 +162,27 @@ public interface RaidsConfig extends Config
 	{
 		return true;
 	}
+
+	@ConfigItem(
+		position = 12,
+		keyName = "reload",
+		name = "Show instance reload button",
+		description = "Configures if the instance reload sidebar should be shown"
+	)
+	default boolean reloadBool()
+	{
+		return true;
+	}
+
+
+	@ConfigItem(
+		position = 13,
+		keyName = "olmSpawn",
+		name = "Show first olm spawn",
+		description = "Shows which side olm spawns when first entering the room first time"
+	)
+	default boolean showOlmSpawn()
+	{
+		return true;
+	}
 }
